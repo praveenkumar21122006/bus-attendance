@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Student - Bus Attendance</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">🚌 Bus Attendance</div>
+        <div class="nav-links">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('add_student') }}" class="active">Add Student</a>
+            <a href="{{ url_for('students') }}">Students</a>
+            <a href="{{ url_for('live_attendance') }}">Live Attendance</a>
+            <a href="{{ url_for('attendance') }}">Attendance Log</a>
+            <a href="{{ url_for('logout') }}" class="logout">Logout</a>
+        </div>
+    </nav>
+
+    <main class="container narrow">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        <h2>Add Student</h2>
+        <form method="POST" action="{{ url_for('add_student') }}" id="student-form">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" required>
+
+            <label for="roll_no">Roll No</label>
+            <input type="text" id="roll_no" name="roll_no" required>
+
+            <label for="bus_no">Bus No</label>
+            <input type="text" id="bus_no" name="bus_no" required>
+
+            <h3>Capture Face</h3>
+            <video id="video" width="100%" autoplay muted playsinline></video>
+            <div class="btn-row">
+                <button type="button" id="capture-btn" class="btn btn-secondary">Capture Photo</button>
+            </div>
+            <canvas id="canvas" style="display:none; width:100%;"></canvas>
+            <input type="hidden" id="image_data" name="image_data">
+
+            <button type="submit" class="btn btn-primary btn-block">Add Student</button>
+        </form>
+    </main>
+
+    <script>
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("canvas");
+        const imageData = document.getElementById("image_data");
+        let captured = false;
+
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+            .then(stream => { video.srcObject = stream; })
+            .catch(err => { alert("Camera access denied: " + err.message); });
+
+        document.getElementById("capture-btn").addEventListener("click", () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext("2d").drawImage(video, 0, 0);
+            const dataUrl = canvas.toDataURL("image/jpeg");
+            imageData.value = dataUrl;
+            captured = true;
+            canvas.style.display = "block";
+        });
+
+        document.getElementById("student-form").addEventListener("submit", (e) => {
+            if (!captured) {
+                e.preventDefault();
+                alert("Please capture a face photo first.");
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ 'Students' if mode == 'students' else 'Attendance Log' }} - Bus Attendance</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">🚌 Bus Attendance</div>
+        <div class="nav-links">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('add_student') }}">Add Student</a>
+            <a href="{{ url_for('students') }}">Students</a>
+            <a href="{{ url_for('live_attendance') }}">Live Attendance</a>
+            <a href="{{ url_for('attendance') }}">Attendance Log</a>
+            <a href="{{ url_for('logout') }}" class="logout">Logout</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        <h2>{{ 'Students' if mode == 'students' else 'Attendance Log' }}</h2>
+
+        {% if mode == 'students' %}
+        <div class="btn-row" style="margin-bottom: 16px;">
+            <a href="{{ url_for('add_student') }}" class="btn btn-primary">Add Student</a>
+        </div>
+        {% endif %}
+
+        <div class="table-wrap">
+            {% if mode == 'students' %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Roll No</th>
+                        <th>Bus No</th>
+                        <th>Registered</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in students %}
+                    <tr>
+                        <td>{{ s['id'] }}</td>
+                        <td>{{ s['name'] }}</td>
+                        <td>{{ s['roll_no'] }}</td>
+                        <td>{{ s['bus_no'] }}</td>
+                        <td>{{ 'Yes' if s['image_path'] else 'No' }}</td>
+                        <td class="action-cell">
+                            <form method="POST" action="{{ url_for('delete_student', student_id=s['id']) }}" onsubmit="return confirm('Delete this student and their attendance records?');">
+                                <button type="submit" class="btn btn-danger btn-small">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="empty">No students registered yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Name</th>
+                        <th>Roll No</th>
+                        <th>Bus No</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in records %}
+                    <tr>
+                        <td>{{ r['id'] }}</td>
+                        <td>{{ r['date'] }}</td>
+                        <td>{{ r['time'] }}</td>
+                        <td>{{ r['name'] }}</td>
+                        <td>{{ r['roll_no'] }}</td>
+                        <td>{{ r['bus_no'] }}</td>
+                        <td><span class="badge badge-present">{{ r['status'] }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="empty">No attendance recorded yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </main>
+</body>
+</html>

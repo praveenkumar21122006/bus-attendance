@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Bus Attendance</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">🚌 Bus Attendance</div>
+        <div class="nav-links">
+            <a href="{{ url_for('dashboard') }}" class="active">Dashboard</a>
+            <a href="{{ url_for('add_student') }}">Add Student</a>
+            <a href="{{ url_for('students') }}">Students</a>
+            <a href="{{ url_for('live_attendance') }}">Live Attendance</a>
+            <a href="{{ url_for('attendance') }}">Attendance Log</a>
+            <a href="{{ url_for('logout') }}" class="logout">Logout</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        <h2>Dashboard</h2>
+
+        <div class="cards">
+            <div class="card">
+                <div class="card-value">{{ total_students }}</div>
+                <div class="card-label">Total Students</div>
+            </div>
+            <div class="card card-green">
+                <div class="card-value">{{ present_today }}</div>
+                <div class="card-label">Present Today</div>
+            </div>
+            <div class="card card-blue">
+                <div class="card-value">
+                    <a href="{{ url_for('live_attendance') }}" class="link">Start Now</a>
+                </div>
+                <div class="card-label">Live Attendance</div>
+            </div>
+        </div>
+
+        <h3>Recent Attendance</h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Name</th>
+                        <th>Roll No</th>
+                        <th>Bus No</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in recent %}
+                    <tr>
+                        <td>{{ r['date'] }}</td>
+                        <td>{{ r['time'] }}</td>
+                        <td>{{ r['name'] }}</td>
+                        <td>{{ r['roll_no'] }}</td>
+                        <td>{{ r['bus_no'] }}</td>
+                        <td><span class="badge badge-present">{{ r['status'] }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="empty">No attendance recorded yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </main>
+</body>
+</html>

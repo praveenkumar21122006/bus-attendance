@@ -99,6 +99,9 @@
                     statusText.textContent = "Marked present: " + data.name;
                     statusText.className = "status-ok";
                     lastMarkedName = data.name;
+                } else if (data.status === "closed") {
+                    statusText.textContent = data.message;
+                    statusText.className = "status-already";
                 } else if (data.status === "already") {
                     statusText.textContent = "Already marked today: " + data.name;
                     statusText.className = "status-already";

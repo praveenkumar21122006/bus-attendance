@@ -187,6 +187,15 @@ def find_matching_student(image):
     return None
 
 
+def current_attendance_session():
+    minutes = datetime.now().hour * 60 + datetime.now().minute
+    if 6 * 60 <= minutes < 11 * 60:
+        return "morning"
+    if 15 * 60 <= minutes < 19 * 60:
+        return "evening"
+    return None
+
+
 def get_face_encodings(image):
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     try:
@@ -578,6 +587,12 @@ def video_feed():
 @login_required
 def mark_attendance():
     global live_student_name, mark_done
+    if current_attendance_session() is None:
+        return jsonify({
+            "status": "closed",
+            "message": "Attendance is open from 6:00 AM to 11:00 AM and 3:00 PM to 7:00 PM.",
+        })
+
     payload = request.get_json(silent=True) or {}
     image_data = payload.get("image_data") or request.form.get("image_data") or ""
     student_name = None

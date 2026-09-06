@@ -39,7 +39,7 @@
 
             <label for="id_card">College ID Card</label>
             <input type="file" id="id_card" name="id_card" accept="image/*">
-            <p class="hint">Upload a clear ID card image containing the student's photo. The name, roll number, and bus number above will appear in attendance logs.</p>
+            <p class="hint" id="ocr-status">Upload a clear ID card image. The text fields will be filled from the card when readable.</p>
 
             <h3>Capture Face</h3>
             <video id="video" width="100%" autoplay muted playsinline></video>
@@ -53,11 +53,66 @@
         </form>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script>
         const video = document.getElementById("video");
         const canvas = document.getElementById("canvas");
         const imageData = document.getElementById("image_data");
+        const idCardInput = document.getElementById("id_card");
+        const ocrStatus = document.getElementById("ocr-status");
         let captured = false;
+
+        function extractField(text, patterns) {
+            const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+            for (const line of lines) {
+                for (const pattern of patterns) {
+                    const match = line.match(pattern);
+                    if (match && match[1]) {
+                        return match[1].replace(/[|]+/g, "").trim();
+                    }
+                }
+            }
+            return "";
+        }
+
+        idCardInput.addEventListener("change", async () => {
+            const file = idCardInput.files[0];
+            if (!file) return;
+
+            ocrStatus.textContent = "Reading the ID card text... please wait.";
+            try {
+                const result = await Tesseract.recognize(file, "eng", {
+                    logger: message => {
+                        if (message.status === "recognizing text" && message.progress) {
+                            ocrStatus.textContent = `Reading ID card: ${Math.round(message.progress * 100)}%`;
+                        }
+                    }
+                });
+                const text = result.data.text;
+                const name = extractField(text, [
+                    /(?:student\s*)?name\s*[:.-]\s*(.+)$/i,
+                    /^name\s+(.+)$/i
+                ]);
+                const rollNo = extractField(text, [
+                    /(?:roll|reg(?:istration)?|student|id)\s*(?:no|number|id)?\s*[:#.-]\s*([A-Z0-9][A-Z0-9\/-]*)/i
+                ]);
+                const busNo = extractField(text, [
+                    /bus\s*(?:no|number)?\s*[:#.-]\s*([A-Z0-9][A-Z0-9\/-]*)/i
+                ]);
+
+                if (name) document.getElementById("name").value = name;
+                if (rollNo) document.getElementById("roll_no").value = rollNo;
+                if (busNo) document.getElementById("bus_no").value = busNo;
+
+                const filled = [name, rollNo, busNo].filter(Boolean).length;
+                ocrStatus.textContent = filled
+                    ? `Filled ${filled} field${filled === 1 ? "" : "s"} from the card. Check the values before submitting.`
+                    : "Text could not be read. Enter the card details manually and submit again.";
+            } catch (error) {
+                console.error(error);
+                ocrStatus.textContent = "Could not read the card automatically. Enter the details manually.";
+            }
+        });
 
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
             .then(stream => { video.srcObject = stream; })

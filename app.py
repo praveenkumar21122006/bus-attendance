@@ -281,6 +281,7 @@ def add_student():
         roll_no = request.form.get("roll_no", "").strip()
         bus_no = request.form.get("bus_no", "").strip()
         image_data = request.form.get("image_data", "")
+        id_card_file = request.files.get("id_card")
 
         if not (name and roll_no and bus_no):
             flash("All fields are required.", "error")
@@ -301,22 +302,27 @@ def add_student():
         except ImportError:
             fr_encodings = None
 
-        if image_data and fr_encodings:
+        if (image_data or id_card_file) and fr_encodings:
             try:
-                img_bytes = base64.b64decode(image_data.split(",")[1])
+                if id_card_file and id_card_file.filename:
+                    img_bytes = id_card_file.read()
+                else:
+                    img_bytes = base64.b64decode(image_data.split(",")[1])
                 np_arr = np.frombuffer(img_bytes, np.uint8)
                 img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                if img is None:
+                    raise ValueError("The ID card image could not be read")
                 rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 encs = fr_encodings(rgb)
                 if not encs:
-                    flash("No face detected. Please use a clear photo.", "error")
+                    flash("No face detected on the ID card. Upload a clear card image or capture a face photo.", "error")
                     conn.close()
                     return redirect(url_for("add_student"))
 
-                # Save student image to dataset
+                # Save the ID card image as the student's registered evidence.
                 student_dir = os.path.join(DATASET_DIR, roll_no)
                 os.makedirs(student_dir, exist_ok=True)
-                image_path = os.path.join(student_dir, f"{roll_no}.jpg")
+                image_path = os.path.join(student_dir, f"{roll_no}_id_card.jpg")
                 cv2.imwrite(image_path, img)
 
                 # Save encoding for all registered faces

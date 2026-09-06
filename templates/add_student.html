@@ -27,7 +27,7 @@
         {% endwith %}
 
         <h2>Add Student</h2>
-        <form method="POST" action="{{ url_for('add_student') }}" id="student-form">
+        <form method="POST" action="{{ url_for('add_student') }}" id="student-form" enctype="multipart/form-data">
             <label for="name">Name</label>
             <input type="text" id="name" name="name" required>
 
@@ -36,6 +36,10 @@
 
             <label for="bus_no">Bus No</label>
             <input type="text" id="bus_no" name="bus_no" required>
+
+            <label for="id_card">College ID Card</label>
+            <input type="file" id="id_card" name="id_card" accept="image/*">
+            <p class="hint">Upload a clear ID card image containing the student's photo. The name, roll number, and bus number above will appear in attendance logs.</p>
 
             <h3>Capture Face</h3>
             <video id="video" width="100%" autoplay muted playsinline></video>
@@ -70,9 +74,10 @@
         });
 
         document.getElementById("student-form").addEventListener("submit", (e) => {
-            if (!captured) {
+            const hasIdCard = document.getElementById("id_card").files.length > 0;
+            if (!captured && !hasIdCard) {
                 e.preventDefault();
-                alert("Please capture a face photo first.");
+                alert("Please upload a college ID card or capture a face photo first.");
             }
         });
     </script>

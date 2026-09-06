@@ -426,6 +426,48 @@ def delete_student(student_id):
     conn.close()
     return redirect(url_for("students"))
 
+@app.route("/delete_attendance/<int:attendance_id>", methods=["POST"])
+@login_required
+def delete_attendance(attendance_id):
+    conn = get_db()
+    deleted = conn.execute(
+        "DELETE FROM attendance WHERE id = ?", (attendance_id,)
+    ).rowcount
+    conn.commit()
+    conn.close()
+    flash(
+        "Attendance log deleted." if deleted else "Attendance log not found.",
+        "success" if deleted else "error",
+    )
+    return redirect(url_for("attendance"))
+
+
+@app.route("/delete_unknown_attendance/<int:record_id>", methods=["POST"])
+@login_required
+def delete_unknown_attendance(record_id):
+    conn = get_db()
+    record = conn.execute(
+        "SELECT image_path FROM unknown_attendance WHERE id = ?", (record_id,)
+    ).fetchone()
+    if record:
+        conn.execute("DELETE FROM unknown_attendance WHERE id = ?", (record_id,))
+        conn.commit()
+    conn.close()
+
+    if record and record["image_path"]:
+        image_path = os.path.join(BASE_DIR, record["image_path"])
+        if os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+            except OSError:
+                pass
+
+    flash(
+        "Unknown-person log deleted." if record else "Unknown-person log not found.",
+        "success" if record else "error",
+    )
+    return redirect(url_for("unknown_attendance"))
+
 
 @app.route("/live_attendance")
 @login_required

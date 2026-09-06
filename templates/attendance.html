@@ -85,6 +85,7 @@
                         <th>Bus No</th>
                         <th>ID Card / Photo</th>
                         <th>Status</th>
+                                            <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -103,9 +104,15 @@
                             {% endif %}
                         </td>
                         <td><span class="badge badge-warning">{{ r['status'] }}</span></td>
+                                            <td class="action-cell">
+                                                <form method="POST" action="{{ url_for('delete_unknown_attendance', record_id=r['id']) }}" onsubmit="return confirm('Delete this unknown-person log?');">
+                                                    <button type="submit" class="btn btn-danger btn-small">Delete</button>
+                                                </form>
+                                            </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="7" class="empty">No unknown persons recorded yet.</td></tr>
+                    <tr><td colspan="8" class="empty">No unknown persons recorded yet.</td></tr>
+                                            <th>Action</th>
                     {% endfor %}
                 </tbody>
             </table>
@@ -140,9 +147,18 @@
                             {% endif %}
                         </td>
                         <td><span class="badge badge-present">{{ r['status'] }}</span></td>
+                                            <td class="action-cell">
+                                                {% if r['kind'] == 'unknown' %}
+                                                <form method="POST" action="{{ url_for('delete_unknown_attendance', record_id=r['id']) }}" onsubmit="return confirm('Delete this unknown-person log?');">
+                                                {% else %}
+                                                <form method="POST" action="{{ url_for('delete_attendance', attendance_id=r['id']) }}" onsubmit="return confirm('Delete this attendance log?');">
+                                                {% endif %}
+                                                    <button type="submit" class="btn btn-danger btn-small">Delete</button>
+                                                </form>
+                                            </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="8" class="empty">No attendance recorded yet.</td></tr>
+                    <tr><td colspan="9" class="empty">No attendance recorded yet.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

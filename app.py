@@ -18,6 +18,7 @@ from flask import (
     flash,
     jsonify,
     Response,
+    send_from_directory,
 )
 
 app = Flask(__name__)
@@ -71,11 +72,38 @@ def init_db():
             date TEXT NOT NULL,
             time TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'present',
+            image_path TEXT,
             FOREIGN KEY (student_id) REFERENCES students(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS unknown_attendance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            bus_no TEXT NOT NULL DEFAULT 'Unknown',
+            date TEXT NOT NULL,
+            time TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'unknown',
+            image_path TEXT
         );
         """
     )
-    # Seed default admin (admin / admin123)
+
+    attendance_cols = conn.execute("PRAGMA table_info(attendance)").fetchall()
+    attendance_col_names = {col[1] for col in attendance_cols}
+    if "image_path" not in attendance_col_names:
+        try:
+            conn.execute("ALTER TABLE attendance ADD COLUMN image_path TEXT")
+        except sqlite3.OperationalError:
+            pass
+
+    unknown_cols = conn.execute("PRAGMA table_info(unknown_attendance)").fetchall()
+    unknown_col_names = {col[1] for col in unknown_cols}
+    if "image_path" not in unknown_col_names:
+        try:
+            conn.execute("ALTER TABLE unknown_attendance ADD COLUMN image_path TEXT")
+        except sqlite3.OperationalError:
+            pass
+
     cur = conn.execute("SELECT COUNT(*) AS c FROM admin")
     if cur.fetchone()["c"] == 0:
         conn.execute(
@@ -326,9 +354,18 @@ def add_student():
 @login_required
 def students():
     conn = get_db()
-    rows = conn.execute("SELECT * FROM students ORDER BY roll_no").fetchall()
+    rows = conn.execute("SELECT * FROM students ORDER BY bus_no ASC, name ASC").fetchall()
     conn.close()
-    return render_template("attendance.html", students=rows, mode="students")
+    students_by_bus = {}
+    for row in rows:
+        students_by_bus.setdefault(row["bus_no"], []).append(row)
+    ordered_buses = sorted(students_by_bus.keys())
+    return render_template(
+        "attendance.html",
+        students_by_bus=students_by_bus,
+        ordered_buses=ordered_buses,
+        mode="students",
+    )
 
 
 @app.route("/delete_student/<int:student_id>", methods=["POST"])
@@ -373,15 +410,72 @@ def live_attendance():
 @login_required
 def attendance():
     conn = get_db()
-    rows = conn.execute(
-        """SELECT attendance.date, attendance.time, attendance.bus_no,
-                  attendance.status, students.name, students.roll_no
+    attendance_cols = {col[1] for col in conn.execute("PRAGMA table_info(attendance)").fetchall()}
+    known_sql = """
+        SELECT attendance.id, attendance.date, attendance.time, attendance.bus_no,
+               attendance.status, students.name, students.roll_no
+        FROM attendance
+        JOIN students ON students.id = attendance.student_id
+        ORDER BY attendance.id DESC
+    """
+    if "image_path" in attendance_cols:
+        known_sql = """
+            SELECT attendance.id, attendance.date, attendance.time, attendance.bus_no,
+                   attendance.status, attendance.image_path,
+                   students.name, students.roll_no
             FROM attendance
             JOIN students ON students.id = attendance.student_id
-            ORDER BY attendance.id DESC"""
+            ORDER BY attendance.id DESC
+        """
+
+    known_rows = conn.execute(known_sql).fetchall()
+    unknown_rows = conn.execute(
+        """SELECT id, name, bus_no, date, time, status, image_path
+            FROM unknown_attendance
+            ORDER BY id DESC"""
     ).fetchall()
     conn.close()
-    return render_template("attendance.html", records=rows, mode="attendance")
+
+    records = []
+    for row in known_rows:
+        records.append({
+            "id": row["id"],
+            "date": row["date"],
+            "time": row["time"],
+            "bus_no": row["bus_no"],
+            "status": row["status"],
+            "name": row["name"],
+            "roll_no": row["roll_no"],
+            "image_path": row["image_path"] if "image_path" in row.keys() else None,
+            "kind": "known",
+        })
+    for row in unknown_rows:
+        records.append({
+            "id": row["id"],
+            "date": row["date"],
+            "time": row["time"],
+            "bus_no": row["bus_no"],
+            "status": row["status"],
+            "name": row["name"],
+            "roll_no": "UNKNOWN",
+            "image_path": row["image_path"],
+            "kind": "unknown",
+        })
+    records.sort(key=lambda item: (item["date"], item["time"]), reverse=True)
+    return render_template("attendance.html", records=records, mode="attendance")
+
+
+@app.route("/unknown_attendance")
+@login_required
+def unknown_attendance():
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT id, name, bus_no, date, time, status, image_path
+            FROM unknown_attendance
+            ORDER BY id DESC"""
+    ).fetchall()
+    conn.close()
+    return render_template("attendance.html", unknown_records=rows, mode="unknown")
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +563,7 @@ def mark_attendance():
     payload = request.get_json(silent=True) or {}
     image_data = payload.get("image_data") or request.form.get("image_data") or ""
     student_name = None
+    unknown_image_path = None
 
     if image_data:
         try:
@@ -477,6 +572,14 @@ def mark_attendance():
             img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
             if img is not None:
                 student_name = find_matching_student(img)
+                if not student_name:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                    os.makedirs(CAPTURES_DIR, exist_ok=True)
+                    unknown_dir = os.path.join(CAPTURES_DIR, "unknown")
+                    os.makedirs(unknown_dir, exist_ok=True)
+                    unknown_path = os.path.join(unknown_dir, f"unknown_{timestamp}.jpg")
+                    cv2.imwrite(unknown_path, img)
+                    unknown_image_path = os.path.relpath(unknown_path, BASE_DIR)
         except Exception:
             student_name = None
     elif live_student_name and not mark_done:
@@ -497,10 +600,11 @@ def mark_attendance():
             if existing:
                 conn.close()
                 return jsonify({"status": "already", "name": student_name})
+            image_path = os.path.relpath(student["image_path"], BASE_DIR) if student["image_path"] else None
             conn.execute(
-                "INSERT INTO attendance (student_id, bus_no, date, time) "
-                "VALUES (?, ?, ?, ?)",
-                (student["id"], student["bus_no"], today, now),
+                "INSERT INTO attendance (student_id, bus_no, date, time, image_path) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (student["id"], student["bus_no"], today, now, image_path),
             )
             conn.commit()
             conn.close()
@@ -508,6 +612,16 @@ def mark_attendance():
             live_student_name = student_name
             return jsonify({"status": "ok", "name": student_name})
         conn.close()
+
+    if unknown_image_path:
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO unknown_attendance (name, bus_no, date, time, status, image_path) VALUES (?, ?, ?, ?, ?, ?)",
+            ("Unknown Person", "Unknown", date.today().isoformat(), datetime.now().strftime("%H:%M:%S"), "unknown", unknown_image_path),
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "unknown", "name": "Unknown Person"})
 
     return jsonify({"status": "waiting"})
 
@@ -521,9 +635,17 @@ def reset_live():
     return jsonify({"ok": True})
 
 
+@app.route("/media/<path:filename>")
+@login_required
+def media_file(filename):
+    return send_from_directory(BASE_DIR, filename)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     init_db()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
+else:
+    init_db()

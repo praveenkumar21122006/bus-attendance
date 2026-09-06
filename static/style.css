@@ -269,6 +269,18 @@ tbody tr:hover {
     padding: 22px;
 }
 
+.bus-group {
+    padding: 18px 0;
+    border-bottom: 1px solid #eef2f7;
+}
+.bus-group:last-child {
+    border-bottom: none;
+}
+.bus-heading {
+    font-size: 1.05rem;
+    margin: 0 0 10px;
+    color: #1f2a44;
+}
 .badge {
     display: inline-block;
     padding: 3px 10px;
@@ -283,6 +295,22 @@ tbody tr:hover {
 .badge-absent {
     background: #fee2e2;
     color: #991b1b;
+}
+.badge-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+.log-photo {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #dbe4ef;
+    display: block;
+}
+.empty-mini {
+    color: #94a3b8;
+    font-size: 0.8rem;
 }
 
 /* ---------- Live ---------- */

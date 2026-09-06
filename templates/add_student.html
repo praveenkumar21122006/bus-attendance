@@ -41,6 +41,11 @@
             <input type="file" id="id_card" name="id_card" accept="image/*">
             <p class="hint" id="ocr-status">Upload a clear ID card image. The text fields will be filled from the card when readable.</p>
 
+            <label for="id_card_back">Card Back Scanner</label>
+            <input type="file" id="id_card_back" name="id_card_back" accept="image/*">
+            <button type="button" id="scan-code-btn" class="btn btn-secondary">Scan Library Code</button>
+            <p class="hint" id="scan-status">Upload a photo of the barcode or QR code on the back of the card, then scan it.</p>
+
             <h3>Capture Face</h3>
             <video id="video" width="100%" autoplay muted playsinline></video>
             <div class="btn-row">
@@ -60,7 +65,71 @@
         const imageData = document.getElementById("image_data");
         const idCardInput = document.getElementById("id_card");
         const ocrStatus = document.getElementById("ocr-status");
+        const backCardInput = document.getElementById("id_card_back");
+        const scanStatus = document.getElementById("scan-status");
         let captured = false;
+
+        function fillFromCode(rawValue) {
+            const value = rawValue.trim();
+            let fields = {};
+            try {
+                const parsed = JSON.parse(value);
+                if (parsed && typeof parsed === "object") fields = parsed;
+            } catch (error) {
+                // Most card scanners return plain text rather than JSON.
+            }
+
+            if (!Object.keys(fields).length) {
+                value.split(/[\\n|;,]+/).forEach(part => {
+                    const match = part.match(/^\\s*(name|student\\s*name|roll(?:\\s*no)?|roll\\s*number|reg(?:istration)?(?:\\s*no)?|bus(?:\\s*no)?)\\s*[:=#-]\\s*(.+?)\\s*$/i);
+                    if (match) fields[match[1].toLowerCase().replace(/\\s+/g, "_")] = match[2];
+                });
+            }
+
+            const name = fields.name || fields.student_name || "";
+            const roll = fields.roll_no || fields.roll_number || fields.roll || fields.registration_no || fields.registration || "";
+            const bus = fields.bus_no || fields.bus_number || fields.bus || "";
+            if (name) document.getElementById("name").value = name;
+            if (roll) document.getElementById("roll_no").value = roll;
+            if (bus) document.getElementById("bus_no").value = bus;
+
+            if (!name && !roll && !bus && /^[A-Z0-9\\/-]{3,}$/i.test(value)) {
+                document.getElementById("roll_no").value = value;
+            }
+            const count = [name, roll, bus].filter(Boolean).length;
+            scanStatus.textContent = count
+                ? `Scanner filled ${count} field${count === 1 ? "" : "s"}. Check the details before submitting.`
+                : "Code read, but it does not contain labeled student details. Enter the remaining fields manually.";
+        }
+
+        document.getElementById("scan-code-btn").addEventListener("click", async () => {
+            const file = backCardInput.files[0];
+            if (!file) {
+                scanStatus.textContent = "Choose a photo of the barcode or QR code on the card back first.";
+                return;
+            }
+            if (!("BarcodeDetector" in window)) {
+                scanStatus.textContent = "This browser does not support barcode scanning. Use the text fields manually or open the app in Chrome.";
+                return;
+            }
+            try {
+                scanStatus.textContent = "Scanning the card code...";
+                const image = await createImageBitmap(file);
+                const detector = new BarcodeDetector({
+                    formats: ["qr_code", "code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e"]
+                });
+                const codes = await detector.detect(image);
+                image.close();
+                if (!codes.length) {
+                    scanStatus.textContent = "No barcode or QR code found. Use a sharp, well-lit photo of the card back.";
+                    return;
+                }
+                fillFromCode(codes[0].rawValue || "");
+            } catch (error) {
+                console.error(error);
+                scanStatus.textContent = "The card code could not be scanned. Try a clearer image or Chrome.";
+            }
+        });
 
         function extractField(text, patterns) {
             const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);

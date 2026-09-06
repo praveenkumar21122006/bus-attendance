@@ -50,3 +50,14 @@ The included `railway.toml` configures deployment on Railway. Set a secure `SECR
 ## Browser Camera Access
 
 The live camera requires browser permission and normally works on `localhost` or an HTTPS deployment.
+
+## Streamlit Cloud
+
+The Streamlit version is in `streamlit_app.py`.
+
+1. Open [Streamlit Community Cloud](https://share.streamlit.io/).
+2. Select this GitHub repository and the `main` branch.
+3. Set the main file to `streamlit_app.py`.
+4. Deploy the app.
+
+Use the default login `admin` / `admin123` after deployment. Streamlit Cloud storage is not permanent, so use an external database and object storage for production attendance data and photos.

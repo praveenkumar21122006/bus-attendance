@@ -213,6 +213,9 @@ input:focus {
 .card-blue {
     border-top-color: #3b82f6;
 }
+.card-red {
+    border-top-color: #ef4444;
+}
 .card-value {
     font-size: 2.2rem;
     font-weight: 800;

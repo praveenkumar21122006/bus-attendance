@@ -37,12 +37,42 @@
                 <div class="card-value">{{ present_today }}</div>
                 <div class="card-label">Present Today</div>
             </div>
+            <div class="card card-red">
+                <div class="card-value">{{ absent_students|length }}</div>
+                <div class="card-label">Absent Today</div>
+            </div>
             <div class="card card-blue">
                 <div class="card-value">
                     <a href="{{ url_for('live_attendance') }}" class="link">Start Now</a>
                 </div>
                 <div class="card-label">Live Attendance</div>
             </div>
+        </div>
+
+        <h3>Absent Students Today</h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Roll No</th>
+                        <th>Bus No</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in absent_students %}
+                    <tr>
+                        <td>{{ student['name'] }}</td>
+                        <td>{{ student['roll_no'] }}</td>
+                        <td>{{ student['bus_no'] }}</td>
+                        <td><span class="badge badge-absent">Absent</span></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="empty">All registered students are present today.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
 
         <h3>Recent Attendance</h3>

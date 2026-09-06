@@ -257,6 +257,17 @@ def dashboard():
         "SELECT COUNT(DISTINCT student_id) AS c FROM attendance WHERE date = ?",
         (today,),
     ).fetchone()["c"]
+    absent_students = conn.execute(
+        """SELECT id, name, roll_no, bus_no
+           FROM students
+           WHERE NOT EXISTS (
+               SELECT 1 FROM attendance
+               WHERE attendance.student_id = students.id
+                 AND attendance.date = ?
+           )
+           ORDER BY bus_no ASC, name ASC""",
+        (today,),
+    ).fetchall()
     recent = conn.execute(
         """SELECT attendance.date, attendance.time, students.name, students.roll_no,
                    attendance.bus_no, attendance.status
@@ -269,6 +280,7 @@ def dashboard():
         "dashboard.html",
         total_students=students,
         present_today=present_today,
+        absent_students=absent_students,
         recent=recent,
     )
 

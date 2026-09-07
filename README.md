@@ -64,6 +64,18 @@ The included `render.yaml` deploys the Docker image as a Render web service and 
 
 Render generates `SECRET_KEY` automatically. Change the default admin password immediately after the first login.
 
+## Railway Deployment
+
+Railway can deploy the same Docker image and provides a persistent volume for attendance data.
+
+1. Open [Railway](https://railway.app/) and choose **Deploy from GitHub repo**.
+2. Select `praveenkumar21122006/bus-attendance`.
+3. Add a Railway volume mounted at `/data`.
+4. Add a `SECRET_KEY` variable with a long random value.
+5. Deploy the service and open the generated public domain.
+
+The included `railway.toml` configures Docker, Gunicorn, health checks, and `DATA_DIR=/data`.
+
 ## Browser Camera Access
 
 The live camera requires browser permission and normally works on `localhost` or an HTTPS deployment.

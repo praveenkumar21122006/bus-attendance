@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bus Admins - Bus Attendance</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">Bus Attendance</div>
+        <div class="nav-links">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('add_admin') }}" class="active">Bus Admins</a>
+            <a href="{{ url_for('add_student') }}">Add Student</a>
+            <a href="{{ url_for('students') }}">Students</a>
+            <a href="{{ url_for('attendance') }}">Attendance Log</a>
+            <a href="{{ url_for('logout') }}" class="logout">Logout</a>
+        </div>
+    </nav>
+
+    <main class="container narrow">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        <h2>Create Bus Admin</h2>
+        <p>Create separate credentials for each bus. That admin will only see students and attendance for the assigned bus.</p>
+        <form method="POST" action="{{ url_for('add_admin') }}">
+            <label for="username">Admin Username</label>
+            <input type="text" id="username" name="username" required autofocus>
+
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+
+            <label for="bus_no">Bus No</label>
+            <input type="text" id="bus_no" name="bus_no" required>
+
+            <button type="submit" class="btn btn-primary btn-block">Create Bus Login</button>
+        </form>
+
+        <h3>Existing Bus Admins</h3>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Username</th><th>Bus No</th></tr></thead>
+                <tbody>
+                    {% for admin in admins %}
+                    <tr><td>{{ admin['username'] }}</td><td>{{ admin['bus_no'] }}</td></tr>
+                    {% else %}
+                    <tr><td colspan="2" class="empty">No bus admins created yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </main>
+</body>
+</html>

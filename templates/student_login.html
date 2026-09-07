@@ -3,29 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Bus Attendance</title>
+    <title>Student Login - Bus Attendance</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="login-body">
     <div class="login-card">
         <h1>Bus Attendance</h1>
-        <p class="subtitle">Admin Login</p>
+        <p class="subtitle">Student Login</p>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% for category, message in messages %}
                 <div class="flash {{ category }}">{{ message }}</div>
             {% endfor %}
         {% endwith %}
-        <form method="POST" action="{{ url_for('login') }}">
-            <label for="username">Username</label>
-            <input type="text" id="username" name="username" required autofocus>
+        <form method="POST" action="{{ url_for('student_login') }}">
+            <label for="roll_no">Roll No</label>
+            <input type="text" id="roll_no" name="roll_no" required autofocus>
 
             <label for="password">Password</label>
             <input type="password" id="password" name="password" required>
 
             <button type="submit" class="btn btn-primary btn-block">Login</button>
         </form>
-        <p class="hint">Bus admins use credentials assigned to their bus.</p>
-        <p class="hint"><a href="{{ url_for('student_login') }}">Student login</a></p>
+        <p class="hint">Use the password provided by your administrator.</p>
+        <p class="hint"><a href="{{ url_for('login') }}">Admin login</a></p>
     </div>
 </body>
 </html>

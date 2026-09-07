@@ -64,37 +64,7 @@ The included `render.yaml` deploys the Docker image as a Render web service and 
 
 Render generates `SECRET_KEY` automatically. Change the default admin password immediately after the first login.
 
-## Firebase Deployment
-
-Firebase Hosting serves the HTTPS URL and forwards application requests to a Cloud Run container. Install and authenticate the Firebase and Google Cloud CLIs, then run these commands from the project directory:
-
-```bash
-firebase login
-gcloud auth login
-gcloud config set project YOUR_FIREBASE_PROJECT_ID
-gcloud builds submit --tag gcr.io/YOUR_FIREBASE_PROJECT_ID/bus-attendance
-gcloud run deploy bus-attendance \
-	--image gcr.io/YOUR_FIREBASE_PROJECT_ID/bus-attendance \
-	--region us-central1 \
-	--platform managed \
-	--allow-unauthenticated \
-	--set-env-vars SECRET_KEY=REPLACE_WITH_A_LONG_RANDOM_VALUE
-firebase deploy --only hosting
-```
-
-The `firebase.json` rewrite expects the Cloud Run service to be named `bus-attendance` in `us-central1`. Cloud Run's local filesystem is temporary, so this deployment is suitable for a demo but not durable attendance data. Move SQLite, face encodings, and uploaded images to a persistent database and Cloud Storage before production use.
-
 ## Browser Camera Access
 
 The live camera requires browser permission and normally works on `localhost` or an HTTPS deployment.
 
-## Streamlit Cloud
-
-The Streamlit version is in `streamlit_app.py`.
-
-1. Open [Streamlit Community Cloud](https://share.streamlit.io/).
-2. Select this GitHub repository and the `main` branch.
-3. Set the main file to `streamlit_app.py`.
-4. Deploy the app.
-
-Use the default login `admin` / `admin123` after deployment. Streamlit Cloud storage is not permanent, so use an external database and object storage for production attendance data and photos.

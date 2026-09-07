@@ -1,0 +1,10 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.py[cod]
+.env
+database.db
+face_encodings.pkl
+captures
+dataset

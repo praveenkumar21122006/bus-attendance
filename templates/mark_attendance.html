@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirm Attendance - Bus Attendance</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">Bus Attendance</div>
+        <div class="nav-links">
+            {% if session.get('admin_logged_in') %}
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('add_student') }}">Add Student</a>
+            <a href="{{ url_for('students') }}">Students</a>
+            <a href="{{ url_for('attendance') }}">Attendance Log</a>
+            {% endif %}
+            <a href="{{ url_for('live_attendance') }}" class="active">Live Attendance</a>
+            <a href="{{ url_for('logout') }}" class="logout">Logout</a>
+        </div>
+    </nav>
+
+    <main class="container narrow">
+        <h2>Confirm Attendance</h2>
+        <p>Details verified for this student. Choose the attendance status for today.</p>
+
+        <div class="student-summary">
+            <strong>{{ student['name'] }}</strong>
+            <span>Register number: {{ student['roll_no'] }}</span>
+            <span>Bus: {{ student['bus_no'] }}</span>
+        </div>
+
+        <form method="POST" action="{{ url_for('mark_verified_attendance') }}" class="btn-row attendance-choice">
+            <input type="hidden" name="student_id" value="{{ student['id'] }}">
+            <button type="submit" name="status" value="present" class="btn btn-secondary">Present</button>
+            <button type="submit" name="status" value="absent" class="btn btn-danger">Absent</button>
+        </form>
+
+        <a href="{{ url_for('live_attendance') }}" class="back-link">Verify another student</a>
+    </main>
+</body>
+</html>

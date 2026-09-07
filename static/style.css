@@ -85,6 +85,9 @@ p {
     color: #991b1b;
     border: 1px solid #fca5a5;
 }
+.duplicate-delete-form {
+    margin-top: 10px;
+}
 .hint {
     margin-top: 16px;
     font-size: 0.85rem;
@@ -190,6 +193,38 @@ input:focus {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+}
+.attendance-form {
+    max-width: 420px;
+    margin-top: 24px;
+}
+.student-summary {
+    display: grid;
+    gap: 8px;
+    background: #fff;
+    border-left: 4px solid #3b82f6;
+    border-radius: 8px;
+    padding: 18px;
+    margin: 22px 0;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+.student-summary span {
+    color: #64748b;
+}
+.attendance-choice {
+    margin-top: 18px;
+}
+.attendance-choice .btn {
+    min-width: 120px;
+}
+.back-link {
+    color: #3b82f6;
+    display: inline-block;
+    margin-top: 12px;
+    text-decoration: none;
+}
+.back-link:hover {
+    text-decoration: underline;
 }
 
 /* ---------- Cards ---------- */

@@ -11,6 +11,9 @@
         <div class="nav-brand">🚌 Bus Attendance</div>
         <div class="nav-links">
             <a href="{{ url_for('dashboard') }}" class="active">Dashboard</a>
+            {% if not session.get('admin_bus_no') %}
+            <a href="{{ url_for('add_admin') }}">Bus Admins</a>
+            {% endif %}
             <a href="{{ url_for('add_student') }}">Add Student</a>
             <a href="{{ url_for('students') }}">Students</a>
             <a href="{{ url_for('live_attendance') }}">Live Attendance</a>

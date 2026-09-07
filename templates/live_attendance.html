@@ -10,11 +10,13 @@
     <nav class="navbar">
         <div class="nav-brand">🚌 Bus Attendance</div>
         <div class="nav-links">
+            {% if session.get('admin_logged_in') %}
             <a href="{{ url_for('dashboard') }}">Dashboard</a>
             <a href="{{ url_for('add_student') }}">Add Student</a>
             <a href="{{ url_for('students') }}">Students</a>
-            <a href="{{ url_for('live_attendance') }}" class="active">Live Attendance</a>
             <a href="{{ url_for('attendance') }}">Attendance Log</a>
+            {% endif %}
+            <a href="{{ url_for('live_attendance') }}" class="active">Live Attendance</a>
             <a href="{{ url_for('logout') }}" class="logout">Logout</a>
         </div>
     </nav>
@@ -27,7 +29,11 @@
         {% endwith %}
 
         <h2>Live Attendance</h2>
-        <p>Point the camera at students. Recognized faces are marked present automatically.</p>
+        {% if session.get('student_logged_in') %}
+        <p>Welcome, {{ session.get('student_name') }}. The camera will automatically capture and mark attendance.</p>
+        {% else %}
+        <p>Allow camera access. The camera will automatically recognize registered students and mark them present.</p>
+        {% endif %}
 
         <div class="live-box">
             <video id="video" autoplay muted playsinline></video>
@@ -36,47 +42,39 @@
 
         <div class="live-status">
             <span>Status:</span>
-            <span id="status-text" class="status-waiting">Waiting for camera...</span>
+            <span id="status-text" class="status-waiting">Starting camera...</span>
         </div>
 
         <div class="btn-row">
-            <button type="button" id="capture-btn" class="btn btn-secondary">Mark Attendance</button>
-            <button type="button" id="reset-btn" class="btn">Reset (allow next student)</button>
+            <button type="button" id="capture-btn" class="btn btn-secondary">Capture Now</button>
+            <button type="button" id="reset-btn" class="btn">Reset</button>
         </div>
     </main>
 
     <script>
-        const statusText = document.getElementById("status-text");
         const video = document.getElementById("video");
         const canvas = document.getElementById("canvas");
-        let autoTimer = null;
-        let lastMarkedName = null;
+        const statusText = document.getElementById("status-text");
+        let stream = null;
+        let scanTimer = null;
         let isProcessing = false;
-
-        function startAutoMarking() {
-            if (autoTimer) return;
-            autoTimer = setInterval(() => {
-                if (!isProcessing) {
-                    markAttendance();
-                }
-            }, 1800);
-        }
+        let scanning = false;
 
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-            .then(stream => {
+            .then(cameraStream => {
+                stream = cameraStream;
                 video.srcObject = stream;
-                statusText.textContent = "Camera ready. Looking for recognized faces...";
-                statusText.className = "status-waiting";
-                startAutoMarking();
+                statusText.textContent = "Camera ready. Scanning automatically...";
+                startAutoCapture();
             })
-            .catch(err => {
-                statusText.textContent = "Camera access denied. Please allow webcam access.";
-                statusText.className = "status-waiting";
-                console.error(err);
+            .catch(error => {
+                console.error(error);
+                statusText.textContent = "Camera access denied. Allow camera permission and reload the page.";
             });
 
-        async function markAttendance() {
-            if (!video.videoWidth || !video.videoHeight) {
+        async function captureAndMark() {
+            if (isProcessing || !video.videoWidth || !video.videoHeight) {
+                statusText.textContent = "Camera is not ready yet.";
                 return;
             }
 
@@ -84,55 +82,56 @@
             const scale = Math.min(1, 640 / video.videoWidth);
             canvas.width = Math.round(video.videoWidth * scale);
             canvas.height = Math.round(video.videoHeight * scale);
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = canvas.toDataURL("image/jpeg", 0.8);
+            canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+            statusText.textContent = "Checking the captured photo...";
 
             try {
-                const res = await fetch("{{ url_for('mark_attendance') }}", {
+                const response = await fetch("{{ url_for('mark_attendance') }}", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ image_data: imageData })
+                    body: JSON.stringify({ image_data: canvas.toDataURL("image/jpeg", 0.85) })
                 });
-                const data = await res.json();
-
-                if (data.status === "ok") {
-                    statusText.textContent = "Marked present: " + data.name;
+                const result = await response.json();
+                if (result.status === "ok") {
+                    statusText.textContent = "Marked present: " + result.name;
                     statusText.className = "status-ok";
-                    lastMarkedName = data.name;
-                } else if (data.status === "closed") {
-                    statusText.textContent = data.message;
+                    stopAutoCapture();
+                } else if (result.status === "already") {
+                    statusText.textContent = "Already marked today: " + result.name;
                     statusText.className = "status-already";
-                } else if (data.status === "already") {
-                    statusText.textContent = "Already marked today: " + data.name;
-                    statusText.className = "status-already";
-                    lastMarkedName = data.name;
+                    stopAutoCapture();
                 } else {
-                    if (lastMarkedName) {
-                        statusText.textContent = "Scanning for next student...";
-                    } else {
-                        statusText.textContent = "Looking for a recognized face...";
-                    }
+                    statusText.textContent = result.message || "No registered student was recognized. Try again.";
                     statusText.className = "status-waiting";
                 }
-            } catch (err) {
-                console.error(err);
-                statusText.textContent = "Connection error while scanning face.";
-                statusText.className = "status-waiting";
+            } catch (error) {
+                console.error(error);
+                statusText.textContent = "Could not connect to the attendance server.";
             } finally {
                 isProcessing = false;
             }
         }
 
-        async function resetLive() {
-            lastMarkedName = null;
-            await fetch("{{ url_for('reset_live') }}", { method: "POST" });
-            statusText.textContent = "Ready for next student...";
-            statusText.className = "status-waiting";
+        function startAutoCapture() {
+            if (scanning) return;
+            scanning = true;
+            scanTimer = setInterval(captureAndMark, 2000);
         }
 
-        document.getElementById("capture-btn").addEventListener("click", markAttendance);
-        document.getElementById("reset-btn").addEventListener("click", resetLive);
+        function stopAutoCapture() {
+            scanning = false;
+            if (scanTimer) {
+                clearInterval(scanTimer);
+                scanTimer = null;
+            }
+        }
+
+        document.getElementById("capture-btn").addEventListener("click", captureAndMark);
+        document.getElementById("reset-btn").addEventListener("click", () => {
+            statusText.textContent = "Ready for the next student.";
+            statusText.className = "status-waiting";
+            startAutoCapture();
+        });
     </script>
 </body>
 </html>

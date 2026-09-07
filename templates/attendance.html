@@ -15,7 +15,6 @@
             <a href="{{ url_for('students') }}">Students</a>
             <a href="{{ url_for('live_attendance') }}">Live Attendance</a>
             <a href="{{ url_for('attendance') }}">Attendance Log</a>
-            <a href="{{ url_for('unknown_attendance') }}">Unknown Persons</a>
             <a href="{{ url_for('logout') }}" class="logout">Logout</a>
         </div>
     </nav>
@@ -44,22 +43,20 @@
                         <table>
                             <thead>
                                 <tr>
-                                    <th>ID</th>
                                     <th>Name</th>
-                                    <th>Roll No</th>
+                                    <th>Boarding Point</th>
+                                    <th>Register No</th>
                                     <th>Bus No</th>
-                                    <th>Registered</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for s in students_by_bus[bus_no] %}
                                 <tr>
-                                    <td>{{ s['id'] }}</td>
                                     <td>{{ s['name'] }}</td>
+                                    <td>{{ s['boarding_point'] }}</td>
                                     <td>{{ s['roll_no'] }}</td>
                                     <td>{{ s['bus_no'] }}</td>
-                                    <td>{{ 'Yes' if s['image_path'] else 'No' }}</td>
                                     <td class="action-cell">
                                         <form method="POST" action="{{ url_for('delete_student', student_id=s['id']) }}" onsubmit="return confirm('Delete this student and their attendance records?');">
                                             <button type="submit" class="btn btn-danger btn-small">Delete</button>
@@ -125,6 +122,8 @@
                         <th>Time</th>
                         <th>Name</th>
                         <th>Roll No</th>
+                        <th>Boarding Point</th>
+                        <th>Year of Study</th>
                         <th>Bus No</th>
                         <th>ID Card / Photo</th>
                         <th>Status</th>
@@ -138,6 +137,8 @@
                         <td>{{ r['time'] }}</td>
                         <td>{{ r['name'] }}</td>
                         <td>{{ r['roll_no'] }}</td>
+                        <td>{{ r['boarding_point'] }}</td>
+                        <td>{{ r['year_of_study'] }}</td>
                         <td>{{ r['bus_no'] }}</td>
                         <td>
                             {% if r['image_path'] %}
@@ -146,7 +147,7 @@
                                 <span class="empty-mini">No photo</span>
                             {% endif %}
                         </td>
-                        <td><span class="badge badge-present">{{ r['status'] }}</span></td>
+                        <td><span class="badge {{ 'badge-present' if r['status'] == 'present' else 'badge-absent' }}">{{ r['status'] }}</span></td>
                                             <td class="action-cell">
                                                 {% if r['kind'] == 'unknown' %}
                                                 <form method="POST" action="{{ url_for('delete_unknown_attendance', record_id=r['id']) }}" onsubmit="return confirm('Delete this unknown-person log?');">

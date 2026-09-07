@@ -27,6 +27,15 @@
         {% endwith %}
 
         <h2>Add Student</h2>
+        {% if existing_student %}
+        <div class="flash error">
+            <strong>Register number {{ existing_student['roll_no'] }} already exists.</strong>
+            <div>{{ existing_student['name'] }} | Bus {{ existing_student['bus_no'] }} | {{ existing_student['boarding_point'] }}</div>
+            <form method="POST" action="{{ url_for('delete_student', student_id=existing_student['id']) }}" onsubmit="return confirm('Delete this existing student and attendance records?');" class="duplicate-delete-form">
+                <button type="submit" class="btn btn-danger btn-small">Delete Existing Student</button>
+            </form>
+        </div>
+        {% endif %}
         <form method="POST" action="{{ url_for('add_student') }}" id="student-form" enctype="multipart/form-data">
             <label for="name">Name</label>
             <input type="text" id="name" name="name" required>
@@ -34,8 +43,28 @@
             <label for="roll_no">Roll No</label>
             <input type="text" id="roll_no" name="roll_no" required>
 
+            <label for="date_of_birth">Date of Birth</label>
+            <input type="date" id="date_of_birth" name="date_of_birth" required>
+
+            <label for="boarding_point">Boarding Point</label>
+            <input type="text" id="boarding_point" name="boarding_point" required>
+
+            <label for="fees_amount">Fees Amount</label>
+            <input type="number" id="fees_amount" name="fees_amount" min="0" step="0.01" required>
+
+            <label for="year_of_study">Year of Study</label>
+            <input type="text" id="year_of_study" name="year_of_study" placeholder="e.g. 2nd Year" required>
+
+            <label for="password">Student Login Password</label>
+            <input type="password" id="password" name="password" placeholder="Defaults to roll number">
+            <p class="hint">Give this password to the student for attendance login.</p>
+
             <label for="bus_no">Bus No</label>
+            {% if admin_bus_no %}
+            <input type="text" id="bus_no" name="bus_no" value="{{ admin_bus_no }}" readonly>
+            {% else %}
             <input type="text" id="bus_no" name="bus_no" required>
+            {% endif %}
 
             <label for="id_card">College ID Card</label>
             <input type="file" id="id_card" name="id_card" accept="image/*">

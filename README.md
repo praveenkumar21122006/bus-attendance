@@ -8,7 +8,7 @@ A Flask-based bus attendance system that uses face recognition to register stude
 
 ## Features
 
-- Admin login
+- Separate admin and student logins
 - Add and delete students
 - Store student names, roll numbers, bus numbers, and face photos
 - Automatic face recognition from the browser camera
@@ -37,6 +37,12 @@ Default login:
 - Username: `admin`
 - Password: `admin123`
 
+Student login:
+
+- Open `/student-login` or use the link on the admin login page.
+- Students use their roll number and the password assigned when the admin adds them.
+- If the admin leaves the password blank, the student's initial password is their roll number.
+
 Change the default credentials before production use.
 
 ## Production Start
@@ -45,7 +51,38 @@ Change the default credentials before production use.
 gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 app:app
 ```
 
-The included `railway.toml` configures deployment on Railway. Set a secure `SECRET_KEY` environment variable and use persistent storage for `database.db`, `dataset/`, `captures/`, and `face_encodings.pkl`.
+Set a secure `SECRET_KEY` environment variable and use persistent storage for `database.db`, `dataset/`, `captures/`, and `face_encodings.pkl`.
+
+## Permanent Render Deployment
+
+The included `render.yaml` deploys the Docker image as a Render web service and mounts a persistent disk at `/var/lib/bus-attendance`. This keeps the SQLite database, student photos, attendance captures, and face encodings across deploys. Persistent disks require Render's Starter plan or higher.
+
+1. Push this repository to GitHub.
+2. In [Render](https://render.com/), choose **New > Blueprint** and select the repository.
+3. Confirm the `render.yaml` configuration and create the service.
+4. Open the generated `onrender.com` URL.
+
+Render generates `SECRET_KEY` automatically. Change the default admin password immediately after the first login.
+
+## Firebase Deployment
+
+Firebase Hosting serves the HTTPS URL and forwards application requests to a Cloud Run container. Install and authenticate the Firebase and Google Cloud CLIs, then run these commands from the project directory:
+
+```bash
+firebase login
+gcloud auth login
+gcloud config set project YOUR_FIREBASE_PROJECT_ID
+gcloud builds submit --tag gcr.io/YOUR_FIREBASE_PROJECT_ID/bus-attendance
+gcloud run deploy bus-attendance \
+	--image gcr.io/YOUR_FIREBASE_PROJECT_ID/bus-attendance \
+	--region us-central1 \
+	--platform managed \
+	--allow-unauthenticated \
+	--set-env-vars SECRET_KEY=REPLACE_WITH_A_LONG_RANDOM_VALUE
+firebase deploy --only hosting
+```
+
+The `firebase.json` rewrite expects the Cloud Run service to be named `bus-attendance` in `us-central1`. Cloud Run's local filesystem is temporary, so this deployment is suitable for a demo but not durable attendance data. Move SQLite, face encodings, and uploaded images to a persistent database and Cloud Storage before production use.
 
 ## Browser Camera Access
 

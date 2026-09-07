@@ -25,10 +25,12 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "bus-attendance-secret-key")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE = os.path.join(BASE_DIR, "database.db")
-DATASET_DIR = os.path.join(BASE_DIR, "dataset")
-CAPTURES_DIR = os.path.join(BASE_DIR, "captures")
-ENCODINGS_PATH = os.path.join(BASE_DIR, "face_encodings.pkl")
+STORAGE_DIR = os.environ.get("DATA_DIR", BASE_DIR)
+os.makedirs(STORAGE_DIR, exist_ok=True)
+DATABASE = os.path.join(STORAGE_DIR, "database.db")
+DATASET_DIR = os.path.join(STORAGE_DIR, "dataset")
+CAPTURES_DIR = os.path.join(STORAGE_DIR, "captures")
+ENCODINGS_PATH = os.path.join(STORAGE_DIR, "face_encodings.pkl")
 
 # Live recognition state
 live_capture = None
@@ -52,13 +54,19 @@ def init_db():
         CREATE TABLE IF NOT EXISTS admin (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL
+            password TEXT NOT NULL,
+            bus_no TEXT NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             roll_no TEXT UNIQUE NOT NULL,
+            date_of_birth TEXT NOT NULL DEFAULT '',
+            password TEXT NOT NULL DEFAULT '',
+            boarding_point TEXT NOT NULL DEFAULT '',
+            fees_amount REAL NOT NULL DEFAULT 0,
+            year_of_study TEXT NOT NULL DEFAULT '',
             bus_no TEXT NOT NULL,
             face_encoding BLOB,
             image_path TEXT,
@@ -96,6 +104,23 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+    admin_cols = {col[1] for col in conn.execute("PRAGMA table_info(admin)").fetchall()}
+    if "bus_no" not in admin_cols:
+        conn.execute("ALTER TABLE admin ADD COLUMN bus_no TEXT NOT NULL DEFAULT ''")
+
+    student_cols = {col[1] for col in conn.execute("PRAGMA table_info(students)").fetchall()}
+    if "password" not in student_cols:
+        conn.execute("ALTER TABLE students ADD COLUMN password TEXT NOT NULL DEFAULT ''")
+        conn.execute("UPDATE students SET password = roll_no WHERE password = ''")
+    for column, definition in (
+        ("date_of_birth", "TEXT NOT NULL DEFAULT ''"),
+        ("boarding_point", "TEXT NOT NULL DEFAULT ''"),
+        ("fees_amount", "REAL NOT NULL DEFAULT 0"),
+        ("year_of_study", "TEXT NOT NULL DEFAULT ''"),
+    ):
+        if column not in student_cols:
+            conn.execute(f"ALTER TABLE students ADD COLUMN {column} {definition}")
+
     unknown_cols = conn.execute("PRAGMA table_info(unknown_attendance)").fetchall()
     unknown_col_names = {col[1] for col in unknown_cols}
     if "image_path" not in unknown_col_names:
@@ -107,8 +132,8 @@ def init_db():
     cur = conn.execute("SELECT COUNT(*) AS c FROM admin")
     if cur.fetchone()["c"] == 0:
         conn.execute(
-            "INSERT INTO admin (username, password) VALUES (?, ?)",
-            ("admin", "admin123"),
+            "INSERT INTO admin (username, password, bus_no) VALUES (?, ?, ?)",
+            ("admin", "admin123", ""),
         )
     conn.commit()
     conn.close()
@@ -117,7 +142,7 @@ def init_db():
 # ---------------------------------------------------------------------------
 # Face encoding helpers
 # ---------------------------------------------------------------------------
-def load_encodings():
+def load_encodings(bus_no=None):
     encodings = {}
     if os.path.exists(ENCODINGS_PATH):
         try:
@@ -125,10 +150,14 @@ def load_encodings():
                 encodings = pickle.load(f)
         except (EOFError, ValueError, pickle.PickleError):
             encodings = {}
+    if bus_no:
+        encodings = {}
 
     conn = get_db()
     rows = conn.execute(
         "SELECT id, name, roll_no, face_encoding FROM students WHERE face_encoding IS NOT NULL"
+        + (" AND bus_no = ?" if bus_no else ""),
+        (bus_no,) if bus_no else (),
     ).fetchall()
     conn.close()
 
@@ -151,13 +180,13 @@ def save_encodings(encodings):
         pickle.dump(encodings, f)
 
 
-def find_matching_student(image):
+def find_matching_student(image, bus_no=None):
     try:
         import face_recognition
     except ImportError:
         return None
 
-    encodings = load_encodings()
+    encodings = load_encodings(bus_no)
     if not encodings:
         return None
 
@@ -188,12 +217,7 @@ def find_matching_student(image):
 
 
 def current_attendance_session():
-    minutes = datetime.now().hour * 60 + datetime.now().minute
-    if 6 * 60 <= minutes < 11 * 60:
-        return "morning"
-    if 15 * 60 <= minutes < 19 * 60:
-        return "evening"
-    return None
+    return "all_day"
 
 
 def get_face_encodings(image):
@@ -219,6 +243,38 @@ def login_required(f):
     return decorated
 
 
+def master_admin_required(f):
+    @wraps(f)
+    @login_required
+    def decorated(*args, **kwargs):
+        if session.get("admin_bus_no"):
+            flash("Only the master admin can manage bus logins.", "error")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+def student_login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("student_logged_in"):
+            return redirect(url_for("student_login"))
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+def attendance_login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not (session.get("admin_logged_in") or session.get("student_logged_in")):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+
+    return decorated
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -226,6 +282,8 @@ def login_required(f):
 def index():
     if session.get("admin_logged_in"):
         return redirect(url_for("dashboard"))
+    if session.get("student_logged_in"):
+        return redirect(url_for("live_attendance"))
     return redirect(url_for("login"))
 
 
@@ -241,12 +299,71 @@ def login():
         ).fetchone()
         conn.close()
         if row:
+            session.clear()
             session["admin_logged_in"] = True
             session["admin_username"] = username
+            session["admin_bus_no"] = row["bus_no"] or None
             flash("Logged in successfully.", "success")
             return redirect(url_for("dashboard"))
         flash("Invalid username or password.", "error")
     return render_template("login.html")
+
+
+@app.route("/add_admin", methods=["GET", "POST"])
+@master_admin_required
+def add_admin():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        bus_no = request.form.get("bus_no", "").strip()
+        if not username or not password or not bus_no:
+            flash("Username, password, and bus number are required.", "error")
+            return redirect(url_for("add_admin"))
+
+        conn = get_db()
+        try:
+            conn.execute(
+                "INSERT INTO admin (username, password, bus_no) VALUES (?, ?, ?)",
+                (username, password, bus_no),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.close()
+            flash("That admin username already exists.", "error")
+            return redirect(url_for("add_admin"))
+        conn.close()
+        flash(f"Admin login for bus {bus_no} created.", "success")
+        return redirect(url_for("add_admin"))
+
+    conn = get_db()
+    admins = conn.execute(
+        "SELECT username, bus_no FROM admin WHERE bus_no != '' ORDER BY bus_no, username"
+    ).fetchall()
+    conn.close()
+    return render_template("add_admin.html", admins=admins)
+
+
+@app.route("/student-login", methods=["GET", "POST"])
+def student_login():
+    if request.method == "POST":
+        roll_no = request.form.get("roll_no", "").strip()
+        password = request.form.get("password", "")
+        conn = get_db()
+        student = conn.execute(
+            "SELECT id, name, roll_no FROM students WHERE roll_no = ? AND password = ?",
+            (roll_no, password),
+        ).fetchone()
+        conn.close()
+        if student:
+            session.clear()
+            session["student_logged_in"] = True
+            session["student_id"] = student["id"]
+            session["student_name"] = student["name"]
+            session["student_roll_no"] = student["roll_no"]
+            flash("Logged in successfully.", "success")
+            return redirect(url_for("live_attendance"))
+        flash("Invalid roll number or password.", "error")
+    return render_template("student_login.html")
 
 
 @app.route("/logout")
@@ -260,29 +377,39 @@ def logout():
 @login_required
 def dashboard():
     conn = get_db()
-    students = conn.execute("SELECT COUNT(*) AS c FROM students").fetchone()["c"]
+    bus_no = session.get("admin_bus_no")
+    scope_sql = " WHERE bus_no = ?" if bus_no else ""
+    scope_params = (bus_no,) if bus_no else ()
+    students = conn.execute(
+        f"SELECT COUNT(*) AS c FROM students{scope_sql}", scope_params
+    ).fetchone()["c"]
     today = date.today().isoformat()
     present_today = conn.execute(
-        "SELECT COUNT(DISTINCT student_id) AS c FROM attendance WHERE date = ?",
-        (today,),
+        "SELECT COUNT(DISTINCT student_id) AS c FROM attendance WHERE date = ? AND status = 'present'"
+        + (" AND bus_no = ?" if bus_no else ""),
+        (today, bus_no) if bus_no else (today,),
     ).fetchone()["c"]
     absent_students = conn.execute(
         """SELECT id, name, roll_no, bus_no
            FROM students
-           WHERE NOT EXISTS (
+              WHERE NOT EXISTS (
                SELECT 1 FROM attendance
                WHERE attendance.student_id = students.id
                  AND attendance.date = ?
+                                 AND attendance.status = 'present'
            )
+              """ + (" AND students.bus_no = ?" if bus_no else "") + """
            ORDER BY bus_no ASC, name ASC""",
-        (today,),
+          (today, bus_no) if bus_no else (today,),
     ).fetchall()
     recent = conn.execute(
         """SELECT attendance.date, attendance.time, students.name, students.roll_no,
                    attendance.bus_no, attendance.status
             FROM attendance
             JOIN students ON students.id = attendance.student_id
+            """ + ("WHERE attendance.bus_no = ?" if bus_no else "") + """
             ORDER BY attendance.id DESC LIMIT 10"""
+        , (bus_no,) if bus_no else ()
     ).fetchall()
     conn.close()
     return render_template(
@@ -300,22 +427,42 @@ def add_student():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         roll_no = request.form.get("roll_no", "").strip()
+        date_of_birth = request.form.get("date_of_birth", "").strip()
+        password = request.form.get("password", "").strip() or roll_no
+        boarding_point = request.form.get("boarding_point", "").strip()
+        fees_amount = request.form.get("fees_amount", "").strip()
+        year_of_study = request.form.get("year_of_study", "").strip()
         bus_no = request.form.get("bus_no", "").strip()
+        if session.get("admin_bus_no"):
+            bus_no = session["admin_bus_no"]
         image_data = request.form.get("image_data", "")
         id_card_file = request.files.get("id_card")
 
-        if not (name and roll_no and bus_no):
+        if not (name and roll_no and date_of_birth and boarding_point and fees_amount and year_of_study and bus_no):
             flash("All fields are required.", "error")
+            return redirect(url_for("add_student"))
+
+        try:
+            fees_amount = float(fees_amount)
+            if fees_amount < 0:
+                raise ValueError
+        except ValueError:
+            flash("Fees amount must be a valid non-negative number.", "error")
             return redirect(url_for("add_student"))
 
         conn = get_db()
         existing = conn.execute(
-            "SELECT id FROM students WHERE roll_no = ?", (roll_no,)
+            "SELECT id, name, roll_no, boarding_point, bus_no FROM students WHERE roll_no = ?"
+            + (" AND bus_no = ?" if session.get("admin_bus_no") else ""),
+            (roll_no, session["admin_bus_no"]) if session.get("admin_bus_no") else (roll_no,),
         ).fetchone()
         if existing:
             conn.close()
-            flash("A student with this roll number already exists.", "error")
-            return redirect(url_for("add_student"))
+            return render_template(
+                "add_student.html",
+                admin_bus_no=session.get("admin_bus_no"),
+                existing_student=existing,
+            )
 
         image_path = None
         try:
@@ -365,23 +512,28 @@ def add_student():
             enc_bytes = None
 
         conn.execute(
-            "INSERT INTO students (name, roll_no, bus_no, face_encoding, image_path) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (name, roll_no, bus_no, enc_bytes, image_path),
+            "INSERT INTO students "
+            "(name, roll_no, date_of_birth, password, boarding_point, fees_amount, year_of_study, bus_no, face_encoding, image_path) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (name, roll_no, date_of_birth, password, boarding_point, fees_amount, year_of_study, bus_no, enc_bytes, image_path),
         )
         conn.commit()
         conn.close()
         flash(f"Student {name} added successfully.", "success")
         return redirect(url_for("add_student"))
 
-    return render_template("add_student.html")
+    return render_template("add_student.html", admin_bus_no=session.get("admin_bus_no"))
 
 
 @app.route("/students")
 @login_required
 def students():
     conn = get_db()
-    rows = conn.execute("SELECT * FROM students ORDER BY bus_no ASC, name ASC").fetchall()
+    bus_no = session.get("admin_bus_no")
+    rows = conn.execute(
+        "SELECT * FROM students" + (" WHERE bus_no = ?" if bus_no else "") + " ORDER BY bus_no ASC, name ASC",
+        (bus_no,) if bus_no else (),
+    ).fetchall()
     conn.close()
     students_by_bus = {}
     for row in rows:
@@ -399,9 +551,11 @@ def students():
 @login_required
 def delete_student(student_id):
     conn = get_db()
+    bus_no = session.get("admin_bus_no")
     student = conn.execute(
-        "SELECT id, name, roll_no, image_path, face_encoding FROM students WHERE id = ?",
-        (student_id,),
+        "SELECT id, name, roll_no, image_path, face_encoding FROM students WHERE id = ?"
+        + (" AND bus_no = ?" if bus_no else ""),
+        (student_id, bus_no) if bus_no else (student_id,),
     ).fetchone()
 
     if student:
@@ -430,8 +584,10 @@ def delete_student(student_id):
 @login_required
 def delete_attendance(attendance_id):
     conn = get_db()
+    bus_no = session.get("admin_bus_no")
     deleted = conn.execute(
-        "DELETE FROM attendance WHERE id = ?", (attendance_id,)
+        "DELETE FROM attendance WHERE id = ?" + (" AND bus_no = ?" if bus_no else ""),
+        (attendance_id, bus_no) if bus_no else (attendance_id,),
     ).rowcount
     conn.commit()
     conn.close()
@@ -446,16 +602,23 @@ def delete_attendance(attendance_id):
 @login_required
 def delete_unknown_attendance(record_id):
     conn = get_db()
+    bus_no = session.get("admin_bus_no")
     record = conn.execute(
-        "SELECT image_path FROM unknown_attendance WHERE id = ?", (record_id,)
+        "SELECT image_path FROM unknown_attendance WHERE id = ?"
+        + (" AND bus_no = ?" if bus_no else ""),
+        (record_id, bus_no) if bus_no else (record_id,),
     ).fetchone()
     if record:
-        conn.execute("DELETE FROM unknown_attendance WHERE id = ?", (record_id,))
+        conn.execute(
+            "DELETE FROM unknown_attendance WHERE id = ?"
+            + (" AND bus_no = ?" if bus_no else ""),
+            (record_id, bus_no) if bus_no else (record_id,),
+        )
         conn.commit()
     conn.close()
 
     if record and record["image_path"]:
-        image_path = os.path.join(BASE_DIR, record["image_path"])
+        image_path = os.path.join(STORAGE_DIR, record["image_path"])
         if os.path.exists(image_path):
             try:
                 os.remove(image_path)
@@ -470,43 +633,113 @@ def delete_unknown_attendance(record_id):
 
 
 @app.route("/live_attendance")
-@login_required
+@attendance_login_required
 def live_attendance():
-    return render_template("live_attendance.html")
+    return render_template("live_attendance.html", student=None)
+
+
+@app.route("/verify_attendance", methods=["POST"])
+@attendance_login_required
+def verify_attendance():
+    roll_no = request.form.get("roll_no", "").strip()
+    date_of_birth = request.form.get("date_of_birth", "").strip()
+    if not roll_no or not date_of_birth:
+        flash("Register number and date of birth are required.", "error")
+        return redirect(url_for("live_attendance"))
+
+    conn = get_db()
+    bus_no = session.get("admin_bus_no")
+    student = conn.execute(
+        "SELECT id, name, roll_no, date_of_birth, bus_no FROM students WHERE roll_no = ? AND date_of_birth = ?"
+        + (" AND bus_no = ?" if bus_no else ""),
+        (roll_no, date_of_birth, bus_no) if bus_no else (roll_no, date_of_birth),
+    ).fetchone()
+    conn.close()
+    if not student:
+        flash("The register number and date of birth do not match.", "error")
+        return redirect(url_for("live_attendance"))
+    if session.get("student_logged_in") and student["id"] != session.get("student_id"):
+        flash("You can only mark attendance for your own account.", "error")
+        return redirect(url_for("live_attendance"))
+
+    return render_template("mark_attendance.html", student=student)
+
+
+@app.route("/mark_verified_attendance", methods=["POST"])
+@attendance_login_required
+def mark_verified_attendance():
+    student_id = request.form.get("student_id", type=int)
+    status = request.form.get("status", "").lower()
+    if status not in {"present", "absent"} or not student_id:
+        flash("Choose Present or Absent to continue.", "error")
+        return redirect(url_for("live_attendance"))
+
+    conn = get_db()
+    bus_no = session.get("admin_bus_no")
+    student = conn.execute(
+        "SELECT id, name, roll_no, bus_no FROM students WHERE id = ?"
+        + (" AND bus_no = ?" if bus_no else ""),
+        (student_id, bus_no) if bus_no else (student_id,),
+    ).fetchone()
+    if not student or (session.get("student_logged_in") and student["id"] != session.get("student_id")):
+        conn.close()
+        flash("Student verification failed.", "error")
+        return redirect(url_for("live_attendance"))
+
+    today = date.today().isoformat()
+    existing = conn.execute(
+        "SELECT id FROM attendance WHERE student_id = ? AND date = ?", (student_id, today)
+    ).fetchone()
+    if existing:
+        conn.close()
+        flash(f"Attendance is already marked for {student['name']} today.", "error")
+        return redirect(url_for("live_attendance"))
+
+    conn.execute(
+        "INSERT INTO attendance (student_id, bus_no, date, time, status) VALUES (?, ?, ?, ?, ?)",
+        (student["id"], student["bus_no"], today, datetime.now().strftime("%H:%M:%S"), status),
+    )
+    conn.commit()
+    conn.close()
+    flash(f"{student['name']} marked {status}.", "success")
+    return redirect(url_for("live_attendance"))
 
 
 @app.route("/attendance")
 @login_required
 def attendance():
     conn = get_db()
+    bus_no = session.get("admin_bus_no")
     attendance_cols = {col[1] for col in conn.execute("PRAGMA table_info(attendance)").fetchall()}
     known_sql = """
         SELECT attendance.id, attendance.date, attendance.time, attendance.bus_no,
-               attendance.status, students.name, students.roll_no
+               attendance.status, students.name, students.roll_no,
+               students.year_of_study, students.boarding_point
         FROM attendance
         JOIN students ON students.id = attendance.student_id
+        """ + ("WHERE attendance.bus_no = ?" if bus_no else "") + """
         ORDER BY attendance.id DESC
     """
     if "image_path" in attendance_cols:
         known_sql = """
             SELECT attendance.id, attendance.date, attendance.time, attendance.bus_no,
-                   attendance.status, attendance.image_path,
-                   students.name, students.roll_no
+                   attendance.status, COALESCE(attendance.image_path, students.image_path) AS image_path,
+                       students.name, students.roll_no, students.year_of_study,
+                       students.boarding_point
             FROM attendance
             JOIN students ON students.id = attendance.student_id
+            """ + ("WHERE attendance.bus_no = ?" if bus_no else "") + """
             ORDER BY attendance.id DESC
         """
 
-    known_rows = conn.execute(known_sql).fetchall()
-    unknown_rows = conn.execute(
-        """SELECT id, name, bus_no, date, time, status, image_path
-            FROM unknown_attendance
-            ORDER BY id DESC"""
-    ).fetchall()
+    known_rows = conn.execute(known_sql, (bus_no,) if bus_no else ()).fetchall()
     conn.close()
 
     records = []
     for row in known_rows:
+        image_path = row["image_path"] if "image_path" in row.keys() else None
+        if image_path and os.path.isabs(image_path):
+            image_path = os.path.relpath(image_path, STORAGE_DIR)
         records.append({
             "id": row["id"],
             "date": row["date"],
@@ -515,42 +748,19 @@ def attendance():
             "status": row["status"],
             "name": row["name"],
             "roll_no": row["roll_no"],
-            "image_path": row["image_path"] if "image_path" in row.keys() else None,
+            "year_of_study": row["year_of_study"],
+            "boarding_point": row["boarding_point"],
+            "image_path": image_path,
             "kind": "known",
-        })
-    for row in unknown_rows:
-        records.append({
-            "id": row["id"],
-            "date": row["date"],
-            "time": row["time"],
-            "bus_no": row["bus_no"],
-            "status": row["status"],
-            "name": row["name"],
-            "roll_no": "UNKNOWN",
-            "image_path": row["image_path"],
-            "kind": "unknown",
         })
     records.sort(key=lambda item: (item["date"], item["time"]), reverse=True)
     return render_template("attendance.html", records=records, mode="attendance")
 
 
-@app.route("/unknown_attendance")
-@login_required
-def unknown_attendance():
-    conn = get_db()
-    rows = conn.execute(
-        """SELECT id, name, bus_no, date, time, status, image_path
-            FROM unknown_attendance
-            ORDER BY id DESC"""
-    ).fetchall()
-    conn.close()
-    return render_template("attendance.html", unknown_records=rows, mode="unknown")
-
-
 # ---------------------------------------------------------------------------
 # Live recognition (video + capture callback)
 # ---------------------------------------------------------------------------
-def gen_frames():
+def gen_frames(bus_no=None):
     global live_capture, live_student_name, mark_done
     camera = cv2.VideoCapture(0)
     if not camera.isOpened():
@@ -569,7 +779,7 @@ def gen_frames():
 
         current_name = None
         if compare_faces:
-            encodings = load_encodings()
+            encodings = load_encodings(bus_no)
             known = list(encodings.keys())
             if known:
                 known_encs = [encodings[k]["encoding"] for k in known]
@@ -622,23 +832,21 @@ def gen_frames():
 @app.route("/video_feed")
 @login_required
 def video_feed():
-    return Response(gen_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return Response(
+        gen_frames(session.get("admin_bus_no")),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
 
 
 @app.route("/mark_attendance", methods=["POST"])
-@login_required
+@attendance_login_required
 def mark_attendance():
     global live_student_name, mark_done
-    if current_attendance_session() is None:
-        return jsonify({
-            "status": "closed",
-            "message": "Attendance is open from 6:00 AM to 11:00 AM and 3:00 PM to 7:00 PM.",
-        })
 
     payload = request.get_json(silent=True) or {}
     image_data = payload.get("image_data") or request.form.get("image_data") or ""
     student_name = None
-    unknown_image_path = None
+    captured_image_path = None
 
     if image_data:
         try:
@@ -646,15 +854,14 @@ def mark_attendance():
             np_arr = np.frombuffer(img_bytes, np.uint8)
             img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
             if img is not None:
-                student_name = find_matching_student(img)
-                if not student_name:
+                student_name = find_matching_student(img, session.get("admin_bus_no"))
+                if student_name:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                    os.makedirs(CAPTURES_DIR, exist_ok=True)
-                    unknown_dir = os.path.join(CAPTURES_DIR, "unknown")
-                    os.makedirs(unknown_dir, exist_ok=True)
-                    unknown_path = os.path.join(unknown_dir, f"unknown_{timestamp}.jpg")
-                    cv2.imwrite(unknown_path, img)
-                    unknown_image_path = os.path.relpath(unknown_path, BASE_DIR)
+                    capture_dir = os.path.join(CAPTURES_DIR, "recognized")
+                    os.makedirs(capture_dir, exist_ok=True)
+                    capture_path = os.path.join(capture_dir, f"{student_name}_{timestamp}.jpg")
+                    if cv2.imwrite(capture_path, img):
+                        captured_image_path = os.path.relpath(capture_path, STORAGE_DIR)
         except Exception:
             student_name = None
     elif live_student_name and not mark_done:
@@ -662,10 +869,15 @@ def mark_attendance():
 
     if student_name:
         conn = get_db()
+        bus_no = session.get("admin_bus_no")
         student = conn.execute(
-            "SELECT * FROM students WHERE name = ?", (student_name,)
+            "SELECT * FROM students WHERE name = ?"
+            + (" AND bus_no = ?" if bus_no else ""),
+            (student_name, bus_no) if bus_no else (student_name,),
         ).fetchone()
         if student:
+            if session.get("student_logged_in") and student["id"] != session.get("student_id"):
+                return jsonify({"status": "waiting"})
             today = date.today().isoformat()
             now = datetime.now().strftime("%H:%M:%S")
             existing = conn.execute(
@@ -675,7 +887,7 @@ def mark_attendance():
             if existing:
                 conn.close()
                 return jsonify({"status": "already", "name": student_name})
-            image_path = os.path.relpath(student["image_path"], BASE_DIR) if student["image_path"] else None
+            image_path = captured_image_path or (os.path.relpath(student["image_path"], STORAGE_DIR) if student["image_path"] else None)
             conn.execute(
                 "INSERT INTO attendance (student_id, bus_no, date, time, image_path) "
                 "VALUES (?, ?, ?, ?, ?)",
@@ -687,16 +899,6 @@ def mark_attendance():
             live_student_name = student_name
             return jsonify({"status": "ok", "name": student_name})
         conn.close()
-
-    if unknown_image_path:
-        conn = get_db()
-        conn.execute(
-            "INSERT INTO unknown_attendance (name, bus_no, date, time, status, image_path) VALUES (?, ?, ?, ?, ?, ?)",
-            ("Unknown Person", "Unknown", date.today().isoformat(), datetime.now().strftime("%H:%M:%S"), "unknown", unknown_image_path),
-        )
-        conn.commit()
-        conn.close()
-        return jsonify({"status": "unknown", "name": "Unknown Person"})
 
     return jsonify({"status": "waiting"})
 
@@ -713,7 +915,7 @@ def reset_live():
 @app.route("/media/<path:filename>")
 @login_required
 def media_file(filename):
-    return send_from_directory(BASE_DIR, filename)
+    return send_from_directory(STORAGE_DIR, filename)
 
 
 # ---------------------------------------------------------------------------

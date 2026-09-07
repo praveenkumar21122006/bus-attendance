@@ -76,6 +76,16 @@ Railway can deploy the same Docker image and provides a persistent volume for at
 
 The included `railway.toml` configures Docker, Gunicorn, health checks, and `DATA_DIR=/data`.
 
+## Hugging Face Spaces Deployment
+
+For a free public demo, create a new Hugging Face Space with the **Docker** SDK and select a public repository. Use these settings:
+
+- Repository: `praveenkumar21122006/bus-attendance`
+- Branch: `main`
+- Docker port: `7860`
+
+The Space will build the included `Dockerfile` and provide an HTTPS URL. Add a `SECRET_KEY` Space variable before using the app. Free Space storage is temporary, so use an external database and object storage for permanent attendance records and photos.
+
 ## Browser Camera Access
 
 The live camera requires browser permission and normally works on `localhost` or an HTTPS deployment.

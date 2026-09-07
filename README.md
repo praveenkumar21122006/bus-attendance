@@ -1,6 +1,6 @@
 # Bus Attendance
 
-A Flask-based bus attendance system that uses face recognition to register students, mark attendance automatically, and log unknown people captured by the live camera.
+A Streamlit-based bus attendance system that uses face recognition to register students and manage attendance.
 
 ## Repository
 
@@ -48,7 +48,7 @@ Change the default credentials before production use.
 ## Production Start
 
 ```bash
-gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 app:app
+streamlit run streamlit_app.py --server.address=0.0.0.0 --server.port=$PORT --server.headless=true
 ```
 
 Set a secure `SECRET_KEY` environment variable and use persistent storage for `database.db`, `dataset/`, `captures/`, and `face_encodings.pkl`.
@@ -74,7 +74,7 @@ Railway can deploy the same Docker image and provides a persistent volume for at
 4. Add a `SECRET_KEY` variable with a long random value.
 5. Deploy the service and open the generated public domain.
 
-The included `railway.toml` configures Docker, Gunicorn, health checks, and `DATA_DIR=/data`.
+The included `railway.toml` configures Docker, Streamlit, health checks, and `DATA_DIR=/data`.
 
 ## Hugging Face Spaces Deployment
 

@@ -21,4 +21,4 @@ COPY static ./static
 COPY templates ./templates
 
 EXPOSE 7860
-CMD exec gunicorn --bind 0.0.0.0:${PORT} --workers 1 --threads 2 --timeout 120 app:app
+CMD exec streamlit run streamlit_app.py --server.address=0.0.0.0 --server.port=${PORT} --server.headless=true

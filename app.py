@@ -25,7 +25,11 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "bus-attendance-secret-key")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STORAGE_DIR = os.environ.get("DATA_DIR", BASE_DIR)
+# Vercel filesystem is read-only except /tmp
+if os.environ.get("VERCEL") == "1" and not os.environ.get("DATA_DIR"):
+    STORAGE_DIR = "/tmp"
+else:
+    STORAGE_DIR = os.environ.get("DATA_DIR", BASE_DIR)
 os.makedirs(STORAGE_DIR, exist_ok=True)
 DATABASE = os.path.join(STORAGE_DIR, "database.db")
 DATASET_DIR = os.path.join(STORAGE_DIR, "dataset")
